@@ -478,6 +478,21 @@ document.getElementById('connectAddr').textContent = 'connect ' + CONFIG.connect
 document.getElementById('connectDirect').href = 'fivem://connect/' + CONFIG.connectAddress.replace(/^https?:\/\//,'');
 
 // ---- جلب بيانات FiveM ----
+async function fetchJSON(url){
+  // محاولة مباشرة ثم عبر وسطاء لتجاوز حماية CORS
+  const tries = [
+    url,
+    'https://api.allorigins.win/raw?url='+encodeURIComponent(url),
+    'https://corsproxy.io/?url='+encodeURIComponent(url)
+  ];
+  for(const u of tries){
+    try{
+      const r = await fetch(u,{cache:'no-store'});
+      if(r.ok){ return await r.json(); }
+    }catch(e){}
+  }
+  return null;
+}
 async function loadFiveM(){
   const pc = document.getElementById('playerCount');
   const mp = document.getElementById('maxPlayers');
@@ -486,23 +501,17 @@ async function loadFiveM(){
 
   // 1) عبر كود cfx.re
   if(CONFIG.cfxCode){
-    try{
-      const r = await fetch('https://servers-frontend.fivem.net/api/servers/single/'+CONFIG.cfxCode,{cache:'no-store'});
-      if(r.ok){ const d=await r.json(); const dat=d.Data||{};
-        online = dat.clients; max = dat.sv_maxclients || dat.svMaxclients; ok=true; }
-    }catch(e){}
+    const d = await fetchJSON('https://servers-frontend.fivem.net/api/servers/single/'+CONFIG.cfxCode);
+    if(d && d.Data){ const dat=d.Data;
+      online = dat.clients; max = dat.sv_maxclients || dat.svMaxclients; ok=true; }
   }
-  // 2) عبر ايبي مباشر (قد يُحجب بسبب CORS لو ما عندك بروكسي)
+  // 2) عبر ايبي مباشر (بديل)
   if(!ok && CONFIG.serverIp){
-    try{
-      const proto = location.protocol==='https:'?'https://':'http://';
-      const [pj,ij] = await Promise.all([
-        fetch(proto+CONFIG.serverIp+'/players.json',{cache:'no-store'}).then(r=>r.json()).catch(()=>null),
-        fetch(proto+CONFIG.serverIp+'/info.json',{cache:'no-store'}).then(r=>r.json()).catch(()=>null)
-      ]);
-      if(pj){ online=pj.length; ok=true; }
-      if(ij&&ij.vars&&ij.vars.sv_maxClients) max=ij.vars.sv_maxClients;
-    }catch(e){}
+    const proto = location.protocol==='https:'?'https://':'http://';
+    const pj = await fetchJSON(proto+CONFIG.serverIp+'/players.json');
+    const ij = await fetchJSON(proto+CONFIG.serverIp+'/info.json');
+    if(pj){ online=pj.length; ok=true; }
+    if(ij&&ij.vars&&ij.vars.sv_maxClients) max=ij.vars.sv_maxClients;
   }
 
   if(ok && online!==undefined && online!==null){
